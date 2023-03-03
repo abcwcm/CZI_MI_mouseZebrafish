@@ -1,0 +1,291 @@
+---
+title: "QC of run1 and run2 (and run3)"
+author: "Friederike Dündar"
+date: "4/26/2021; updated `r Sys.Date()`"
+output:
+    html_document:
+        toc: true
+        code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, cache.lazy = FALSE)
+```
+
+```{r libraries, chache=FALSE}
+library(data.table)
+library(magrittr)
+library(ggplot2); theme_set(theme_bw(base_size = 16))
+library(patchwork)
+
+data_dir <- "~/Documents/Projects/2020-09_CZI_JamesJingli/Eric_scRNAseq/data/"
+```
+
+
+We currently have the following samples:
+
+```{r results='asis'}
+smptab <- fread(paste0(data_dir, "samplesEric.txt"))
+smptab$Sample <- paste(smptab$tissue, smptab$surgery, smptab$timepoint, smptab$run, sep = "_")
+ABCutilities::my_table(smptab)
+```
+
+For QC, I will:
+
+* first combine all samples into one big SCE object (`paste0("sce_unfiltered_", Sys.Date(), ".rds")`)
+* extract the colData with the QC metrics to
+    - generate QC plots on my local machine and
+    - determine the individual QC thresholds for each sample
+
+Then I'll return to the server for filtering, batch correction, clustering, dimReds, and SingleR annotation.
+I will combine samples of the same tissue.
+
+## Reading data in
+
+```{r loading_10X_output, eval=FALSE}
+# on server:
+#$ conda activate czi
+options(menu.graphics=FALSE)
+library(SingleCellExperiment)
+library(DropletUtils)
+library(scater)
+library(scran)
+library(magrittr)
+
+data_dir <- "/scratchLocal/frd2007/2021-04_EricJames_CZI/data/"
+smptab <- read.table(paste0(data_dir, "samplesEric.txt"), header=TRUE, stringsAsFactors = FALSE)
+smptab$my_sample_name <- paste(smptab$tissue, smptab$surgery, smptab$timepoint, smptab$run, sep = "_")
+
+smpls <- unique(smptab$sample)
+
+scel <- lapply(smpls, function(x){
+    mysmp <- subset(smptab, sample == x)$my_sample_name
+    print(paste("Reading CellRanger output for", x))
+    out.sce <- DropletUtils::read10xCounts(
+        samples = paste0(data_dir, "CellRangerOutput/", x,
+            "/outs/filtered_feature_bc_matrix"),
+        sample.names = mysmp,
+        version = "auto")
+})
+
+full_data <- do.call(cbind, lapply(scel, counts))
+cell_info <- do.call(rbind, lapply(scel, colData))
+gene_info <- rowData(scel[[1]])
+
+
+## combine in one object
+sce.all <- SingleCellExperiment(
+    list(counts = full_data), 
+    rowData = gene_info,
+    colData = cell_info, 
+    metadata = list(Samples = names(scel))
+)
+
+rm(scel); gc()
+
+## remove completely uncovered genes
+gnszero <- Matrix::rowSums(counts(sce.all)) == 0
+sce.all <- sce.all[!gnszero, ]
+#> dim(sce.all)
+#[1]  27859 442307
+
+## add cellnames
+cellnames <- lapply(unique(sce.all$Sample), function(x){
+    tmp <- sce.all[, sce.all$Sample==x]
+    n_smp <- ncol(tmp)
+    outnames <- paste(x, c(1:n_smp),sep=".")
+    return(outnames)
+}) %>% unlist
+colnames(sce.all) <- cellnames
+
+## add QC info
+is.mito <- grepl("mt-", ignore.case = TRUE, rowData(sce.all)$Symbol)
+sce.all <- addPerCellQC(sce.all, subsets=list(mitochondrial=is.mito))
+
+mm <- lapply(unique(sce.all$Sample), function(x){
+        ss <- sce.all[, sce.all$Sample == x]$subsets_mitochondrial_percent
+        isOutlier(ss, type = "higher")})
+sce.all$mito.discard <- unlist(mm)
+sce.all$mito.discard <- ifelse(is.na(sce.all$mito.discard), FALSE, sce.all$mito.discard)
+
+## determine GENE count thresholds for each Sample individually
+gg <- lapply(unique(sce.all$Sample), function(x){
+    ss <- log10(sce.all[, sce.all$Sample == x]$detected)
+    isOutlier(ss)
+})
+sce.all$gene.discard <- unlist(gg)
+
+## save colData
+library(data.table)
+cd <-colData(sce.all) 
+cd$cell <- rownames(cd)
+cd <- as.data.frame(cd) %>% as.data.table
+saveRDS(cd, file = paste0("colData_unfiltered_", Sys.Date(), ".rds"))
+
+saveRDS(sce.all, file = paste0("sce_unfiltered_", Sys.Date(), ".rds"))
+```
+
+## Finding filters
+
+```{r local_data_load}
+## load the colData locally for Rmd
+qcall <- readRDS(paste0(data_dir, "colData_unfiltered_2021-06-15.rds"))
+qcall$tissue <- gsub("_.*","", qcall$Sample)
+qcall$surgery <- gsub(".*_([MIsham]+)_.*", "\\1", qcall$Sample)
+qcall$day <- gsub(".*_(d[0-9]+)_.*", "\\1", qcall$Sample)
+qcall$run <- gsub(".*_","",qcall$Sample)
+```
+
+```{r fig.width = 18, fig.height = 12}
+for(i in unique(qcall$tissue)){
+    dt <- qcall[tissue == i]
+    P1 <- ggplot(dt,
+        aes(x = Sample, y = subsets_mitochondrial_percent, color = mito.discard)) +
+        ggbeeswarm::geom_quasirandom(size = .2, alpha = .3, shape = 1) +
+        theme(axis.text.x  = element_text(angle=90, vjust=0.5, size=14)) +
+        scale_color_manual(values = rev(c("firebrick2","grey75"))) +
+        ylab("% mitochondrial genes") + coord_cartesian(ylim = c(0,20)) +
+        theme(legend.position = "bottom")+
+        guides(colour = guide_legend(override.aes = list(alpha = 1, size = 3, shape = 19)))
+    P2 <- ggplot(dt,
+        aes(x = subsets_mitochondrial_percent, y = log10(detected),
+            color = mito.discard)) +
+        geom_point(size = .2, shape = 1 , alpha = .5) +
+        facet_wrap(~Sample, ncol = 3) +
+        scale_color_manual(values = rev(c("firebrick2","grey75"))) +
+        xlab("% mitochondrial genes") + ylab("log10(total number of genes)")+ 
+        theme(legend.position = "bottom")+
+        guides(colour = guide_legend(override.aes = list(alpha = 1, size = 3, shape = 19)))
+    pw <- P1 | P2
+    pw <- pw + plot_annotation(title = i) + plot_layout(widths = c(1.5,3))
+    print(pw)
+}
+```
+
+## First filtering
+
+```{r}
+qcall[, 
+    max_mito := ifelse(tissue == "islets", 10, 
+        ifelse(tissue == "blood" & Sample %in% c("blood_MI_d30_run1","blood_sham_d30_run1", "blood_sham_d07_run2", "blood_MI_d07_run2"), 7.5,
+            ifelse(tissue == "blood" & Sample != "blood_MI_d07_run2", 5,
+                ifelse(tissue == "blood", 2,
+                    ifelse(tissue == "heart" & surgery == "MI", 10,
+                        ifelse(tissue == "heart", 15,
+                            ifelse(tissue == "liver", 50, NA)))))))]
+```
+
+```{r fig.width = 18, fig.height = 12}
+for(i in unique(qcall$tissue)){
+    dt <- qcall[tissue == i & subsets_mitochondrial_percent <= max_mito]
+    ymax <- max(dt$max_mito)
+    P1 <- ggplot(dt,
+        aes(x = Sample, y = subsets_mitochondrial_percent, color = gene.discard)) +
+        ggbeeswarm::geom_quasirandom(size = .2, alpha = .3, shape = 1) +
+        theme(axis.text.x  = element_text(angle=90, vjust=0.5, size=14)) +
+        scale_color_manual(values = rev(c("blue","grey75"))) +
+        ylab("% mitochondrial genes") + coord_cartesian(ylim = c(0,ymax)) +
+        theme(legend.position = "bottom") +
+        guides(colour = guide_legend(override.aes = list(alpha = 1, size = 3, shape = 19)))
+    P2 <- ggplot(dt,
+        aes(x = subsets_mitochondrial_percent, y = log10(detected),
+            color = gene.discard)) +
+        geom_point(size = .2, shape = 1 , alpha = .5) +
+        facet_wrap(~Sample, ncol = 3) +
+        scale_color_manual(values = rev(c("blue","grey75"))) +
+        xlab("% mitochondrial genes") + ylab("log10(total number of genes)")+ 
+        theme(legend.position = "bottom") +
+        guides(colour = guide_legend(override.aes = list(alpha = 1, size = 3, shape = 19)))
+    pw <- P1 | P2
+    pw <- pw + plot_annotation(title = i) + plot_layout(widths = c(1.5,3))
+    print(pw)
+}
+```
+
+## Second filtering
+
+Here, I am setting blood aside for the moment until I know via SingleR what the proper filters might be.
+
+```{r }
+qcall[, max_mito := ifelse(tissue == "islets",7.5, 
+    ifelse(tissue == "liver", 10,
+        ifelse(tissue == "heart", 10, max_mito)))]
+
+qcall[, min_genes := ifelse(tissue == "islets", 3.25,
+        ifelse(tissue == "heart", 3,
+            ifelse(tissue == "liver", 2.6, NA)))]
+
+qcall[ , gene.discard := ifelse(is.na(min_genes), FALSE,
+    ifelse(log10(detected) <= min_genes, TRUE, FALSE))]
+qcall[ , mito.discard := ifelse(subsets_mitochondrial_percent > max_mito, TRUE, FALSE)]
+qcall[, rm_cell := ifelse(mito.discard == TRUE | gene.discard == TRUE, TRUE, FALSE)]
+```
+
+How many cells are going to be removed per sample? [Note that blood still needs to be figured out]
+
+```{r }
+table(qcall$Sample, qcall$rm_cell)
+```
+```{r fig.width = 10, fig.height=10}
+ggplot(qcall, aes(x = Sample, fill = rm_cell)) +geom_bar() + coord_flip()  +
+  #  scale_color_manual(values = c("midnightblue","dodgerblue3","dodgerblue1")) +
+    scale_fill_manual(values = c("grey75","orange")) +
+    ylab("# cells") + ggtitle("How many cells will be removed per sample?") +
+    facet_wrap(~run, scales="free_y", ncol = 1)
+```
+
+
+```{r fig.width = 18, fig.height = 12}
+for(i in unique(qcall$tissue)){
+    dt <- qcall[tissue == i & subsets_mitochondrial_percent <= max_mito]
+    ymax <- max(dt$max_mito)
+    P1 <- ggplot(dt,
+        aes(x = Sample, y = subsets_mitochondrial_percent, color = rm_cell)) +
+        ggbeeswarm::geom_quasirandom(size = .2, alpha = .3, shape = 1) +
+        theme(axis.text.x  = element_text(angle=90, vjust=0.5, size=14)) +
+        scale_color_manual(values = rev(c("orange","grey75"))) +
+        ylab("% mitochondrial genes") + coord_cartesian(ylim = c(0,ymax)) +
+        theme(legend.position = "bottom") +
+        guides(colour = guide_legend(override.aes = list(alpha = 1, size = 3, shape = 19)))
+    P2 <- ggplot(dt,
+        aes(x = subsets_mitochondrial_percent, y = log10(detected),
+            color = rm_cell)) +
+        geom_point(size = .2, shape = 1 , alpha = .5) +
+        facet_wrap(~Sample, ncol = 3) +
+        scale_color_manual(values = rev(c("orange","grey75"))) +
+        xlab("% mitochondrial genes") + ylab("log10(total number of genes)")+ 
+        theme(legend.position = "bottom") +
+        guides(colour = guide_legend(override.aes = list(alpha = 1, size = 3, shape = 19)))
+    pw <- P1 | P2
+    pw <- pw + plot_annotation(title = i) + plot_layout(widths = c(1.5,3))
+    print(pw)
+}
+```
+
+## Do the filtering
+
+```{r eval=FALSE}
+# save the colData to be added back to the SCE
+saveRDS(qcall, file = paste0(data_dir, "colData_filtered_2021-06-15.rds"))
+#$ scp ~/Documents/Projects/2020-09_CZI_JamesJingli/Eric_scRNAseq/data/colData_filtered_2021-06-15.rds frd2007@redteam2.pbtech:/scratchLocal/frd2007/2021-04_EricJames_CZI/2021-06-03_secondRunQC/
+
+## on server
+qcall <- readRDS("colData_filtered_2021-06-15.rds")
+qcall <- qcall[, c("Sample","Barcode","cell","tissue","surgery","day","run","rm_cell")] %>%
+    .[cd, on = c("Sample", "Barcode","cell")]
+
+qcall.df <- DataFrame(as.data.frame(qcall))
+rownames(qcall.df) <- qcall.df$cell
+colData(sce.all) <- qcall.df[colnames(sce.all),]
+
+## remove cells
+sce.all <- sce.all[, !sce.all$rm_cell]
+gnszero <- Matrix::rowSums(counts(sce.all)) == 0
+sce.all <- sce.all[!gnszero, ]
+
+saveRDS(sce.all, file = "sce_filtered_2021-06-15.rds")
+```
+
+Next step: SingleR-based cell labeling (see `2021-06-07_SingleR.Rmd`)
