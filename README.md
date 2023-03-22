@@ -10,7 +10,7 @@ Various tissues from both zebrafish and mouse were prepared for scRNA-seq to ide
 
 ### scRNA-seq analysis
 
-The raw reads were aligned and processed with the CellRanger pipeline (v6.0.0) using the mouse (mm10) or zebrafish genomes (GRCz11).\
+The raw reads were aligned and processed with the CellRanger pipeline (v6.0.0) using the mouse (mm10) or zebrafish genomes (GRCz11).
 Subsequent analyses were performed in R following the recommendations of Amezquita et al. (<https://osca.bioconductor.org/>) using numerous functions provided in the R packages  `scater` and `scran`. 
 Briefly, quality control was carried out for each sample separately with functions from the `scuttle` package; cells with low gene content and high mitochondrial gene content were removed from further analyses.
 For each species, different count matrices across all samples were scaled to account for sequencing depth differences and log-transformed using `multiBatchNorm` from the `batchelor` package. Cell types were annotated with `SingleR` using numerous datasets and manual inspection of marker genes.
@@ -33,3 +33,8 @@ For myeloid cluster pairs with high inter-species alignment scores (mm1-dr4, mm4
 * MNN: Haghverdi, L., Lun, A.T.L., Morgan, M.D. & Marioni, J.C. Batch effects in single-cell RNA-sequencing data are corrected by matching mutual nearest neighbors. Nat Biotechnol 36, 421–427 (2018).
 * clusterProfiler: Yu, G., Wang, L.G., Han, Y. & He, Q.Y. clusterProfiler: an R package for comparing biological themes among gene clusters. OMICS 16, 284–287 (2012).
 * SAMap: Tarashansky, A.J. et al. Mapping single-cell atlases throughout Metazoa unravels cell type evolution. Elife 10 (2021)
+
+
+![](https://github.com/abcwcm/CZI_MI_mouseZebrafish/blob/e3d9a64746b538e4e628caf241956a035255791a/WCM_MB_LOGO_HZSS1L_CLR_RGB.png)
+
+Code written by Friederike Dündar & Paul Zumbo at the [Applied Bioinformatics Core of Weill Cornell Medicine](https://abc.med.cornell.edu). Don't hesitate to get in touch with questions.
