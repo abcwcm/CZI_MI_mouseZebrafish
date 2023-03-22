@@ -4,6 +4,7 @@ Cortada et al., 2023. <https://www.biorxiv.org/content/10.1101/2023.03.15.532865
 
 >Scripts for the analysis of scRNA-seq data of mouse and zebrafish 
 
+
 ## Methods
 
 Various tissues from both zebrafish and mouse were prepared for scRNA-seq to identify the organism-wide gene signatures following experimental myocardial infarct (MI) in fish and mice.
@@ -11,6 +12,7 @@ Various tissues from both zebrafish and mouse were prepared for scRNA-seq to ide
 ### scRNA-seq analysis
 
 The raw reads were aligned and processed with the CellRanger pipeline (v6.0.0) using the mouse (mm10) or zebrafish genomes (GRCz11).
+The original CellRanger QC can be found [here for the zebrafish samples](https://wcm.box.com/s/del7n4aylewur3ucz5478chvkok1r7nf) and [here for the mouse samples](https://wcm.box.com/s/a560b0lgmegfs03bbqxsgsdi74aaijut).
 Subsequent analyses were performed in R following the recommendations of Amezquita et al. (<https://osca.bioconductor.org/>) using numerous functions provided in the R packages  `scater` and `scran`. 
 Briefly, quality control was carried out for each sample separately with functions from the `scuttle` package; cells with low gene content and high mitochondrial gene content were removed from further analyses.
 For each species, different count matrices across all samples were scaled to account for sequencing depth differences and log-transformed using `multiBatchNorm` from the `batchelor` package. Cell types were annotated with `SingleR` using numerous datasets and manual inspection of marker genes.
