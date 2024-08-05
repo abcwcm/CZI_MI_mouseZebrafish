@@ -27,6 +27,10 @@ Raw scRNA-seq count matrices of zebrafish and mouse were extracted from `SingleC
 
 For myeloid cluster pairs with high inter-species alignment scores (mm1-dr4, mm4-dr6, and mm6-dr3), marker genes for each cluster were assessed using scran::scoreMarkers (mean AUC > 0.6), and over-representation analyses were performed using `clusterProfiler` with respect to gene ontology terms. To compare the transcriptional response to MI (mouse) or cardiac cryoinjury (zebrafish) between the myeloid cluster pairs, differential expression analysis was performed using scran::findMarkers(lfc=0.25) at days 1 and 7 in the heart and in the blood. Genes were considered statistically significant at an FDR cutoff of 0.10.
 
+## Data Availability
+
+The mouse scRNA-seq dataset generated in this study have been deposited at the Cellxgene platform (https://cellxgene.cziscience.com/collections/24e324a1-b42d-4438-9bb5-cf5233fa90b0).  The zebrafish scRNA-seq data can be accessed [here https://wcm.box.com/s/9v1q68egin7h3abh3222qx7d99tsffes] in AnnData format.
+
 ## References
 
 * scater: McCarthy, D.J., Campbell, K.R., Lun, A.T. & Wills, Q.F. Scater: pre-processing, quality control, normalization and visualization of single-cell RNA-seq data in R. Bioinformatics 33, 1179–1186 (2017).
