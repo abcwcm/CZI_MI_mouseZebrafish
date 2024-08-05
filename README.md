@@ -29,7 +29,7 @@ For myeloid cluster pairs with high inter-species alignment scores (mm1-dr4, mm4
 
 ## Data Availability
 
-The mouse scRNA-seq dataset generated in this study have been deposited at the Cellxgene platform (https://cellxgene.cziscience.com/collections/24e324a1-b42d-4438-9bb5-cf5233fa90b0).  The zebrafish scRNA-seq data can be accessed [here https://wcm.box.com/s/9v1q68egin7h3abh3222qx7d99tsffes] in AnnData format.
+The mouse scRNA-seq dataset generated in this study have been deposited at the Cellxgene platform (https://cellxgene.cziscience.com/collections/24e324a1-b42d-4438-9bb5-cf5233fa90b0).  The zebrafish scRNA-seq data can be accessed [here](https://wcm.box.com/s/9v1q68egin7h3abh3222qx7d99tsffes) in AnnData format.
 
 ## References
 
